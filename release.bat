@@ -1,48 +1,96 @@
 @echo off
 setlocal enabledelayedexpansion
+
+:: ============================================================
+::  release.bat - GanHyperlink Auto Release
+::  Usage: release.bat           (will prompt for version)
+::         release.bat 1.0.4     (auto-add v prefix)
+::         release.bat v1.0.4
+:: ============================================================
+
 set "VERSION=%~1"
+
+:: -- Prompt if no argument --
 if "!VERSION!"=="" (
     echo.
-    echo  GanHyperlink - Auto Release
+    echo  ====================================================
+    echo   GanHyperlink ^| Auto Release to GitHub
+    echo  ====================================================
     echo.
-    set /p "VERSION= Nhap phien ban (vi du: 1.0.4): "
+    set /p "VERSION= Enter version (e.g. 1.0.4): "
     echo.
 )
+
+:: -- Auto-add v prefix if missing --
 if "!VERSION:~0,1!" neq "v" set "VERSION=v!VERSION!"
-echo [INFO] Phien ban: !VERSION!
+
+echo  [INFO] Version: !VERSION!
 echo.
-git tag --list "!VERSION!" | findstr "!VERSION!" >nul
+
+:: -- Clean local tag if exists --
+git tag --list "!VERSION!" | findstr "!VERSION!" >nul 2>&1
 if not errorlevel 1 (
-    echo [INFO] Xoa tag local cu: !VERSION!
+    echo  [INFO] Deleting local tag: !VERSION!
     git tag -d "!VERSION!" >nul 2>&1
 )
-git ls-remote --tags origin "!VERSION!" | findstr "!VERSION!" >nul
+
+:: -- Clean remote tag if exists --
+git ls-remote --tags origin "refs/tags/!VERSION!" | findstr "!VERSION!" >nul 2>&1
 if not errorlevel 1 (
-    echo [INFO] Xoa tag remote cu: !VERSION!
+    echo  [INFO] Deleting remote tag: !VERSION!
     git push origin :refs/tags/!VERSION! >nul 2>&1
 )
 echo.
-echo [1/4] Kiem tra thay doi...
+
+:: -- [1/4] Status --
+echo  [1/4] Git status...
 git status --short
 echo.
-echo [2/4] Commit thay doi...
-git status --porcelain > "%TEMP%\gs.txt"
-for %%A in ("%TEMP%\gs.txt") do set sz=%%~zA
-if !sz! gtr 0 (git add -A && git commit -m "chore: release !VERSION!" && echo [OK] Da commit.) else echo [OK] Khong co thay doi.
+
+:: -- [2/4] Auto commit if dirty --
+echo  [2/4] Committing changes...
+git status --porcelain > "%TEMP%\gs_release.txt"
+for %%F in ("%TEMP%\gs_release.txt") do set "FSIZE=%%~zF"
+if !FSIZE! gtr 0 (
+    git add -A
+    git commit -m "chore: release !VERSION!"
+    echo  [OK] Committed.
+) else (
+    echo  [OK] Nothing to commit.
+)
 echo.
-echo [3/4] Push len GitHub...
+
+:: -- [3/4] Push main --
+echo  [3/4] Pushing main to GitHub...
 git push origin main
-if errorlevel 1 (echo [LOI] Push that bai! & pause & exit /b 1)
-echo [OK] Push thanh cong.
+if errorlevel 1 (
+    echo  [ERROR] Push failed!
+    pause
+    exit /b 1
+)
+echo  [OK] Push successful.
 echo.
-echo [4/4] Tao va push tag !VERSION!...
+
+:: -- [4/4] Tag, push, delete local --
+echo  [4/4] Creating tag !VERSION!...
 git tag "!VERSION!" -m "Release !VERSION!"
 git push origin "!VERSION!"
-if errorlevel 1 (git tag -d "!VERSION!" 2>nul & echo [LOI] Push tag that bai! & pause & exit /b 1)
+if errorlevel 1 (
+    echo  [ERROR] Tag push failed!
+    git tag -d "!VERSION!" >nul 2>&1
+    pause
+    exit /b 1
+)
 git tag -d "!VERSION!" >nul 2>&1
-echo [OK] Tag !VERSION! da push va xoa khoi local.
+echo  [OK] Tag !VERSION! pushed and deleted locally.
 echo.
-echo XONG! GitHub Actions dang build EXE...
-echo https://github.com/huynhtrancntt/Hoang_GanHyperlink/releases/tag/!VERSION!
+
+:: -- Done --
+echo  ====================================================
+echo   DONE! GitHub Actions is building EXE...
+echo.
+echo   Monitor: https://github.com/huynhtrancntt/Hoang_GanHyperlink/actions
+echo   Release: https://github.com/huynhtrancntt/Hoang_GanHyperlink/releases/tag/!VERSION!
+echo  ====================================================
 echo.
 pause
