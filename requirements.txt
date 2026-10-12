@@ -1,0 +1,5 @@
+pyinstaller
+pillow
+openpyxl
+python-docx
+lxml
