@@ -14,10 +14,26 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-import openpyxl
-from docx import Document
-from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
+# ── Lazy-loaded heavy libs (import trong background để UI hiện ngay) ─────────
+openpyxl   = None
+Document   = None
+qn         = None
+OxmlElement = None
+_libs_ready = threading.Event()   # set() khi import xong
+
+
+def _preload_libs():
+    """Import các thư viện nặng trong background thread."""
+    global openpyxl, Document, qn, OxmlElement
+    import openpyxl as _openpyxl
+    from docx import Document as _Document
+    from docx.oxml.ns import qn as _qn
+    from docx.oxml import OxmlElement as _OxmlElement
+    openpyxl    = _openpyxl
+    Document    = _Document
+    qn          = _qn
+    OxmlElement = _OxmlElement
+    _libs_ready.set()
 
 # ══════════════════════════════════════════════════════════
 # ── CORE LOGIC ────────────────────────────────────────────
@@ -238,6 +254,11 @@ def run_core(word_in: Path, excel_in: Path, word_out: Path,
              log_cb, done_cb, link_style: str = 'auto', link_color: str = '0000FF'):
     """Chạy trong thread riêng để không treo GUI."""
     try:
+        # Đảm bảo thư viện đã load xong (thường chỉ cần <1s)
+        if not _libs_ready.is_set():
+            log_cb("⏳ Đang tải thư viện, vui lòng chờ...")
+            _libs_ready.wait(timeout=30)
+
         log_cb(f"📊 Đang đọc Excel: {excel_in.name} ...")
         url_map = load_url_map(excel_in)
         log_cb(f"✅ Load được {len(url_map)} mã từ Excel.")
@@ -373,12 +394,31 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Gắn Hyperlink vào Word  ·  @HT-Labs")
+        # ── Icon cửa sổ & taskbar ────────────────────────────────────────
+        _ico = Path(__file__).parent / "icon.ico"
+        if _ico.exists():
+            try:
+                self.iconbitmap(str(_ico))   # Windows: set icon taskbar + title bar
+            except Exception:
+                pass
+        # ─────────────────────────────────────────────────────────────────
         self.geometry("960x720")
         self.minsize(760, 600)
         self.configure(bg=BG)
         self.resizable(True, True)
         self._build_ui()
         self._auto_detect()
+        # ── Preload heavy libs ngay sau khi UI hiện ─────────────────────
+        threading.Thread(target=_preload_libs, daemon=True).start()
+        self.after(100, self._check_libs_ready)
+
+    def _check_libs_ready(self):
+        """Cập nhật status bar khi thư viện đã load xong."""
+        if _libs_ready.is_set():
+            self._status("✅ Sẵn sàng", SUCCESS)
+        else:
+            self._status("⏳ Đang khởi tạo thư viện...", ACCENT2)
+            self.after(150, self._check_libs_ready)
 
     # ── tự động điền đường dẫn ────────────────────────────
     def _auto_detect(self):

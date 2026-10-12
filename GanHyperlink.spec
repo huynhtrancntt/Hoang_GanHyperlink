@@ -1,12 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
-
+# GanHyperlink.spec – dùng cho PyInstaller (cả local lẫn GitHub Actions CI)
 
 a = Analysis(
-    ['C:/Users/HT/Downloads/New folder/app.py'],
-    pathex=[],
+    ['app.py'],
+    pathex=['.'],
     binaries=[],
     datas=[],
-    hiddenimports=['docx', 'docx.oxml', 'docx.oxml.ns', 'openpyxl', 'lxml', 'lxml.etree'],
+    hiddenimports=[
+        'docx',
+        'docx.oxml',
+        'docx.oxml.ns',
+        'openpyxl',
+        'lxml',
+        'lxml.etree',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -14,6 +21,7 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+
 pyz = PYZ(a.pure)
 
 exe = EXE(
@@ -35,4 +43,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='icon.ico',        # ← icon đã thêm
 )

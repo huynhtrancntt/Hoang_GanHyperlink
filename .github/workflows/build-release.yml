@@ -1,0 +1,104 @@
+﻿name: Build and Release GanHyperlink.exe
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows EXE
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller pillow openpyxl python-docx lxml
+
+      - name: Generate icon.ico
+        run: python make_icon.py
+
+      - name: Build EXE with PyInstaller
+        run: pyinstaller GanHyperlink.spec --clean --noconfirm
+
+      - name: Verify build output
+        shell: pwsh
+        run: |
+          if (Test-Path "dist\GanHyperlink.exe") {
+            $size = (Get-Item "dist\GanHyperlink.exe").length / 1MB
+            Write-Host "Build SUCCESS: GanHyperlink.exe ($([math]::Round($size,2)) MB)"
+          } else {
+            Write-Host "Build FAILED: EXE not found!"
+            exit 1
+          }
+
+      - name: Get version
+        id: get_version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -match "refs/tags/(.+)") {
+            $version = $Matches[1]
+          } else {
+            $version = "dev-$($env:GITHUB_SHA.Substring(0,7))"
+          }
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $version"
+
+      - name: Compress to ZIP
+        id: compress
+        shell: pwsh
+        run: |
+          $version = "${{ steps.get_version.outputs.VERSION }}"
+          $zipName = "GanHyperlink-$version-Windows-x64.zip"
+          Compress-Archive -Path "dist\GanHyperlink.exe" -DestinationPath $zipName -Force
+          $size = (Get-Item $zipName).length / 1MB
+          Write-Host "ZIP created: $zipName ($([math]::Round($size,2)) MB)"
+          echo "ZIP_NAME=$zipName" >> $env:GITHUB_OUTPUT
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GanHyperlink-${{ steps.get_version.outputs.VERSION }}-Windows-x64
+          path: ${{ steps.compress.outputs.ZIP_NAME }}
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "GanHyperlink ${{ steps.get_version.outputs.VERSION }}"
+          tag_name: ${{ steps.get_version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: ${{ steps.compress.outputs.ZIP_NAME }}
+          body: |
+            ## GanHyperlink ${{ steps.get_version.outputs.VERSION }}
+
+            Cong cu gan Hyperlink tu dong vao Word.
+
+            **Tai xuong:**
+            - Giai nen file ZIP va chay GanHyperlink.exe
+
+            **Yeu cau:**
+            - Windows 10/11 x64
+            - Khong can cai Python
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

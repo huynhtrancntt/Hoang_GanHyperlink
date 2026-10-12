@@ -1,5 +1,26 @@
-dist
-build
+# Build output
+dist/
+build/
+*.spec.bak
+
+# Python
 *.pyc
-venv
-.vscode
+*.pyo
+__pycache__/
+*.egg-info/
+.eggs/
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# Tạm thời
+convert_icon.py
+*.log
+
+# Giữ lại: icon_src.jpg, icon.ico, make_icon.py, GanHyperlink.spec
