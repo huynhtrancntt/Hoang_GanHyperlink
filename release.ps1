@@ -21,6 +21,11 @@ if ($Version -eq "") {
     Write-Host ""
 }
 
+# ── Tu dong them "v" neu user nhap "1.0.2" thay vi "v1.0.2" ─────────────────
+if ($Version -match "^\d+\.\d+\.\d+$") {
+    $Version = "v$Version"
+}
+
 # ── Kiem tra dinh dang vX.Y.Z ────────────────────────────────────────────────
 if ($Version -notmatch "^v\d+\.\d+\.\d+$") {
     Write-Host "  [LOI] Dinh dang sai: $Version" -ForegroundColor Red
