@@ -103,8 +103,12 @@ def _emit_range(p_elem, full_text, start, end, pos_map, segs):
         i = j
 
 
-def _build_link_rPr(context_rPr):
-    # Ke thua font/size goc, them Hyperlink+bold+xanh. Van ban KHONG doi.
+def _build_link_rPr(context_rPr, link_style: str = 'auto', link_color: str = '0000FF'):
+    """
+    Xay dung rPr cho hyperlink.
+    link_style : 'auto' | 'bold' | 'normal'
+    link_color : ma hex 6 ky tu (khong co #), vi du '0000FF'
+    """
     new_rPr = copy.deepcopy(context_rPr) if context_rPr is not None \
               else OxmlElement('w:rPr')
     for tag in ('w:rStyle', 'w:b', 'w:bCs', 'w:color', 'w:u'):
@@ -114,10 +118,17 @@ def _build_link_rPr(context_rPr):
     rStyle = OxmlElement('w:rStyle')
     rStyle.set(qn('w:val'), 'Hyperlink')
     new_rPr.insert(0, rStyle)
-    new_rPr.append(OxmlElement('w:b'))
-    new_rPr.append(OxmlElement('w:bCs'))
+    orig_bold = _is_bold(context_rPr) if context_rPr is not None else False
+    apply_bold = (
+        orig_bold if link_style == 'auto' else
+        True      if link_style == 'bold' else
+        False
+    )
+    if apply_bold:
+        new_rPr.append(OxmlElement('w:b'))
+        new_rPr.append(OxmlElement('w:bCs'))
     color = OxmlElement('w:color')
-    color.set(qn('w:val'), '0070C0')
+    color.set(qn('w:val'), link_color.upper().lstrip('#') or '0000FF')
     new_rPr.append(color)
     return new_rPr
 
@@ -144,9 +155,10 @@ def _page_breaks_in(p_elem) -> int:
     return count
 
 
-def process_paragraph(paragraph, url_map, page_num=1):
+def process_paragraph(paragraph, url_map, page_num=1,
+                      link_style='auto', link_color='0000FF'):
     # Van ban thuong: giu 100% dinh dang goc
-    # Ma [Hxx] co URL -> hyperlink dam + xanh
+    # Ma [Hxx] co URL -> hyperlink mau link_color, bold theo link_style
     # Ma khong co URL -> giu nguyen text + dinh dang goc
     p_elem = paragraph._p
     segs   = _collect_segments(paragraph)   # (text, rPr, old_url)
@@ -175,7 +187,7 @@ def process_paragraph(paragraph, url_map, page_num=1):
         if code_clean in url_map:
             ctx_seg  = pos_map[start] if start < len(pos_map) else 0
             ctx_rPr  = segs[ctx_seg][1] if ctx_seg < len(segs) else None
-            old_url  = segs[ctx_seg][2] if ctx_seg < len(segs) else None  # URL cu
+            old_url  = segs[ctx_seg][2] if ctx_seg < len(segs) else None
             bold_before = _is_bold(ctx_rPr)
             part = paragraph.part
             new_url = url_map[code_clean]
@@ -187,7 +199,7 @@ def process_paragraph(paragraph, url_map, page_num=1):
             hl = OxmlElement('w:hyperlink')
             hl.set(qn('r:id'), r_id)
             hl_run = OxmlElement('w:r')
-            hl_run.append(_build_link_rPr(ctx_rPr))
+            hl_run.append(_build_link_rPr(ctx_rPr, link_style, link_color))
             hl_t = OxmlElement('w:t')
             hl_t.text = code_with_bracket
             hl_t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
@@ -222,7 +234,8 @@ def process_paragraph(paragraph, url_map, page_num=1):
     return replaced, changes, breaks
 
 
-def run_core(word_in: Path, excel_in: Path, word_out: Path, log_cb, done_cb):
+def run_core(word_in: Path, excel_in: Path, word_out: Path,
+             log_cb, done_cb, link_style: str = 'auto', link_color: str = '0000FF'):
     """Chạy trong thread riêng để không treo GUI."""
     try:
         log_cb(f"📊 Đang đọc Excel: {excel_in.name} ...")
@@ -234,13 +247,14 @@ def run_core(word_in: Path, excel_in: Path, word_out: Path, log_cb, done_cb):
         log_cb(f"📖 Đang mở Word: {word_in.name} ...")
         doc = Document(str(word_in))
 
-        log_cb("🔄 Đang gắn link vào paragraphs và bảng...")
+        style_label = {'auto': 'Bình thường (kế thừa)', 'bold': 'Luôn in đậm', 'normal': 'Luôn in thường'}
+        log_cb(f"🔄 Đang gắn link — kiểu chữ: {style_label.get(link_style, link_style)}")
         total       = 0
         all_changes = []  # [(code, url, page, is_bold)]
         cur_page    = 1   # Trang hien tai (dem tu page break)
 
         for para in doc.paragraphs:
-            n, ch, brk = process_paragraph(para, url_map, cur_page)
+            n, ch, brk = process_paragraph(para, url_map, cur_page, link_style, link_color)
             total    += n
             all_changes.extend(ch)
             cur_page += brk
@@ -249,7 +263,7 @@ def run_core(word_in: Path, excel_in: Path, word_out: Path, log_cb, done_cb):
             for row in table.rows:
                 for cell in row.cells:
                     for para in cell.paragraphs:
-                        n, ch, brk = process_paragraph(para, url_map, cur_page)
+                        n, ch, brk = process_paragraph(para, url_map, cur_page, link_style, link_color)
                         total    += n
                         all_changes.extend(ch)
                         cur_page += brk
@@ -359,8 +373,8 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Gắn Hyperlink vào Word  ·  @HT-Labs")
-        self.geometry("800x640")
-        self.minsize(700, 560)
+        self.geometry("960x720")
+        self.minsize(760, 600)
         self.configure(bg=BG)
         self.resizable(True, True)
         self._build_ui()
@@ -414,20 +428,20 @@ class App(tk.Tk):
     # ── UI ────────────────────────────────────────────────
     def _build_ui(self):
         # ── Sidebar ───────────────────────────────────────
-        sidebar = tk.Frame(self, bg=SIDEBAR, width=220)
+        sidebar = tk.Frame(self, bg=SIDEBAR, width=200)
         sidebar.pack(side="left", fill="y")
         sidebar.pack_propagate(False)
 
-        tk.Label(sidebar, text="🔗", font=("Segoe UI Emoji", 36),
-                 bg=SIDEBAR, fg=ACCENT2).pack(pady=(32, 4))
+        tk.Label(sidebar, text="🔗", font=("Segoe UI Emoji", 30),
+                 bg=SIDEBAR, fg=ACCENT2).pack(pady=(24, 2))
         tk.Label(sidebar, text="Gắn Hyperlink\nvào Word",
-                 font=("Segoe UI", 13, "bold"), bg=SIDEBAR,
+                 font=("Segoe UI", 12, "bold"), bg=SIDEBAR,
                  fg=FG, justify="center").pack()
         tk.Label(sidebar,
-                 text="Thay [H..] → link\nxanh đậm, có thể click",
-                 font=FONT_SM, bg=SIDEBAR, fg=FG2, justify="center").pack(pady=(6, 0))
+                 text="Thay [H..] → link\ncó thể click",
+                 font=FONT_SM, bg=SIDEBAR, fg=FG2, justify="center").pack(pady=(4, 0))
 
-        ttk.Separator(sidebar, orient="horizontal").pack(fill="x", padx=20, pady=22)
+        ttk.Separator(sidebar, orient="horizontal").pack(fill="x", padx=16, pady=16)
 
         info = [
             ("📄", "Word gốc",  "File .docx cần gắn link"),
@@ -436,8 +450,8 @@ class App(tk.Tk):
         ]
         for icon, title, desc in info:
             row = tk.Frame(sidebar, bg=SIDEBAR)
-            row.pack(fill="x", padx=16, pady=7)
-            tk.Label(row, text=icon, font=("Segoe UI Emoji", 13),
+            row.pack(fill="x", padx=12, pady=5)
+            tk.Label(row, text=icon, font=("Segoe UI Emoji", 12),
                      bg=SIDEBAR, fg=ACCENT2, width=3).pack(side="left")
             col = tk.Frame(row, bg=SIDEBAR)
             col.pack(side="left", padx=(4, 0))
@@ -445,128 +459,207 @@ class App(tk.Tk):
             tk.Label(col, text=desc, font=FONT_SM, bg=SIDEBAR, fg=FG2, anchor="w").pack(anchor="w")
 
         tk.Label(sidebar, text="v2.0  ·  @HT-Labs",
-                 font=FONT_SM, bg=SIDEBAR, fg=FG2).pack(side="bottom", pady=14)
+                 font=FONT_SM, bg=SIDEBAR, fg=FG2).pack(side="bottom", pady=12)
 
-        # ── Main ──────────────────────────────────────────
+        # ── Main (vertical: form_panel + log_panel) ────────
         main = tk.Frame(self, bg=BG)
         main.pack(side="left", fill="both", expand=True)
 
-        # Header
-        hdr = tk.Frame(main, bg=BG)
-        hdr.pack(fill="x", padx=28, pady=(24, 6))
-        tk.Label(hdr, text="Cấu hình đường dẫn file",
-                 font=FONT_H, bg=BG, fg=FG).pack(anchor="w")
-        tk.Label(hdr,
-                 text="Chọn file bên dưới rồi bấm Chạy.",
-                 font=FONT_SM, bg=BG, fg=FG2).pack(anchor="w", pady=(2, 0))
+        # ── FORM PANEL (fixed height, compact) ─────────────
+        form_panel = tk.Frame(main, bg=BG)
+        form_panel.pack(fill="x", padx=20, pady=(16, 0))
 
-        # Divider
-        tk.Frame(main, bg="#2E3650", height=1).pack(fill="x", padx=28, pady=(6, 0))
+        # Header (1 dòng nhỏ)
+        hdr = tk.Frame(form_panel, bg=BG)
+        hdr.pack(fill="x", pady=(0, 6))
+        tk.Label(hdr, text="Cấu hình", font=FONT_H, bg=BG, fg=FG).pack(side="left")
+        tk.Label(hdr, text="  — chọn file rồi bấm Chạy",
+                 font=FONT_SM, bg=BG, fg=FG2).pack(side="left", pady=(4, 0))
 
-        # Form
-        form = tk.Frame(main, bg=BG)
-        form.pack(fill="x", padx=28, pady=10)
-        form.columnconfigure(0, weight=1)
+        tk.Frame(form_panel, bg="#2E3650", height=1).pack(fill="x", pady=(0, 8))
 
+        # Khai báo vars
         self.var_word_in  = tk.StringVar()
         self.var_excel    = tk.StringVar()
         self.var_word_out = tk.StringVar()
-        self.var_out_name = tk.StringVar()  # chỉ tên file (không có .docx)
-
-        # Theo dõi thay đổi để tự cập nhật output
+        self.var_out_name = tk.StringVar()
         self.var_word_in.trace_add("write", self._refresh_output)
         self.var_out_name.trace_add("write", self._refresh_output)
 
-        self._file_row(form, 0, "📄  File Word gốc (.docx)", self.var_word_in,
-                       lambda: self._browse_word())
-        self._file_row(form, 1, "📊  File Excel mapping (.xlsx)", self.var_excel,
-                       lambda: self._browse(self.var_excel,
-                                            [("Excel", "*.xlsx"), ("All", "*.*")]))
+        # Grid 2 cột: trái=Word, phải=Excel
+        grid = tk.Frame(form_panel, bg=BG)
+        grid.pack(fill="x")
+        grid.columnconfigure(0, weight=1)
+        grid.columnconfigure(1, weight=1)
 
-        # ── Tên file xuất (chỉ nhập tên, không cần full path) ──
-        tk.Label(form, text="✏️  Tên file xuất  (không cần gõ .docx)",
-                 font=FONT_B, bg=BG, fg=FG
-                 ).grid(row=4, column=0, sticky="w", pady=(10, 2), columnspan=2)
-        name_wrap = tk.Frame(form, bg=BG)
-        name_wrap.grid(row=5, column=0, sticky="ew", columnspan=2)
-        name_wrap.columnconfigure(0, weight=1)
-        tk.Entry(name_wrap, textvariable=self.var_out_name, font=FONT,
-                 bg=ENTRY_BG, fg=FG, relief="flat",
-                 insertbackground=FG, bd=0
-                 ).grid(row=0, column=0, sticky="ew", ipady=8, padx=(0, 8))
-        tk.Label(name_wrap, text="_done  (mặc định)",
-                 font=FONT_SM, bg=BG, fg=FG2).grid(row=0, column=1, sticky="w")
+        def _lbl(parent, text):
+            tk.Label(parent, text=text, font=FONT_SM, bg=BG, fg=FG2
+                     ).pack(anchor="w", pady=(0, 2))
 
-        # ── Full path output (readonly preview) ──
-        tk.Label(form, text="💾  Đường dẫn file xuất  (tự động)",
-                 font=FONT_B, bg=BG, fg=FG
-                 ).grid(row=6, column=0, sticky="w", pady=(10, 2), columnspan=2)
-        out_wrap = tk.Frame(form, bg=BG)
-        out_wrap.grid(row=7, column=0, sticky="ew", columnspan=2)
-        out_wrap.columnconfigure(0, weight=1)
-        tk.Entry(out_wrap, textvariable=self.var_word_out, font=FONT,
+        def _entry_btn(parent, var, cmd):
+            f = tk.Frame(parent, bg=BG)
+            f.pack(fill="x", pady=(0, 8))
+            f.columnconfigure(0, weight=1)
+            tk.Entry(f, textvariable=var, font=FONT,
+                     bg=ENTRY_BG, fg=FG, relief="flat",
+                     insertbackground=FG, bd=0
+                     ).grid(row=0, column=0, sticky="ew", ipady=6, padx=(0, 6))
+            tk.Button(f, text="…", font=FONT_B, bg=ACCENT, fg=BTN_FG,
+                      relief="flat", cursor="hand2", padx=10, pady=3,
+                      command=cmd).grid(row=0, column=1, sticky="e")
+
+        # Cột trái: Word
+        left = tk.Frame(grid, bg=BG)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        _lbl(left, "📄 File Word gốc (.docx)")
+        _entry_btn(left, self.var_word_in, lambda: self._browse_word())
+
+        # Cột phải: Excel
+        right = tk.Frame(grid, bg=BG)
+        right.grid(row=0, column=1, sticky="nsew")
+        _lbl(right, "📊 File Excel mapping (.xlsx)")
+        _entry_btn(right, self.var_excel,
+                   lambda: self._browse(self.var_excel, [("Excel","*.xlsx"),("All","*.*")]))
+
+        # Hàng 2: Output path + style/color (ngang)
+        row2 = tk.Frame(form_panel, bg=BG)
+        row2.pack(fill="x")
+        row2.columnconfigure(0, weight=1)
+        row2.columnconfigure(1, weight=1)
+
+        # Output: ten file + full path (col trai)
+        out_left = tk.Frame(row2, bg=BG)
+        out_left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+
+        _lbl(out_left, "✏️ Tên file xuất  (bỏ trống = _done)")
+        nf = tk.Frame(out_left, bg=BG)
+        nf.pack(fill="x", pady=(0, 4))
+        nf.columnconfigure(0, weight=1)
+        tk.Entry(nf, textvariable=self.var_out_name, font=FONT,
+                 bg=ENTRY_BG, fg=FG, relief="flat", insertbackground=FG, bd=0
+                 ).grid(row=0, column=0, sticky="ew", ipady=6, padx=(0, 6))
+        tk.Label(nf, text="_done", font=FONT_SM, bg=BG, fg=FG2
+                 ).grid(row=0, column=1, sticky="w")
+
+        _lbl(out_left, "💾 Đường dẫn xuất (tự động)")
+        of = tk.Frame(out_left, bg=BG)
+        of.pack(fill="x", pady=(0, 4))
+        of.columnconfigure(0, weight=1)
+        tk.Entry(of, textvariable=self.var_word_out, font=FONT,
                  bg=ENTRY_BG, fg=FG2, relief="flat",
                  insertbackground=FG, bd=0, state="readonly"
-                 ).grid(row=0, column=0, sticky="ew", ipady=8, padx=(0, 8))
-        tk.Button(out_wrap, text="…", font=FONT_B, bg=ACCENT, fg=BTN_FG,
-                  relief="flat", cursor="hand2", padx=12, pady=5,
+                 ).grid(row=0, column=0, sticky="ew", ipady=6, padx=(0, 6))
+        tk.Button(of, text="…", font=FONT_B, bg=ACCENT, fg=BTN_FG,
+                  relief="flat", cursor="hand2", padx=10, pady=3,
                   command=lambda: self._save_browse(self.var_word_out)
                   ).grid(row=0, column=1, sticky="e")
 
-        # ── Buttons ───────────────────────────────────────
-        btn_row = tk.Frame(main, bg=BG)
-        btn_row.pack(fill="x", padx=28, pady=(14, 6))
+        # Style + Color (col phai)
+        out_right = tk.Frame(row2, bg=BG)
+        out_right.grid(row=0, column=1, sticky="nsew")
+
+        _lbl(out_right, "🅱 Kiểu chữ khi gắn link")
+        self.var_link_style = tk.StringVar(value='auto')
+        _style_labels = ['Binh thuong (ke thua goc)', 'Luon in dam', 'Luon in thuong']
+        _style_vals   = ['auto', 'bold', 'normal']
+        style_cb = ttk.Combobox(out_right, values=_style_labels,
+                                state='readonly', font=FONT_SM, width=26)
+        style_cb.current(0)
+        style_cb.pack(anchor='w', ipady=4, pady=(0, 6), fill='x')
+        def _on_style(e, cb=style_cb, vals=_style_vals):
+            self.var_link_style.set(vals[cb.current()])
+        style_cb.bind('<<ComboboxSelected>>', _on_style)
+
+        _lbl(out_right, "🎨 Màu chữ  (hex 6 ký tự)")
+        cf = tk.Frame(out_right, bg=BG)
+        cf.pack(anchor='w', pady=(0, 2))
+        tk.Label(cf, text="#", font=("Consolas", 10), bg=BG, fg=FG2).pack(side='left')
+        self.var_link_color = tk.StringVar(value='0000FF')
+        self._color_entry = tk.Entry(cf, textvariable=self.var_link_color,
+                 font=("Consolas", 10), bg=ENTRY_BG, fg=FG,
+                 width=8, relief='flat', insertbackground=FG)
+        self._color_entry.pack(side='left', ipady=4, padx=(2, 8))
+        self._color_swatch = tk.Label(cf, text='      ', bg='#0000FF',
+                                      width=4, height=1, relief='flat')
+        self._color_swatch.pack(side='left')
+        tk.Button(cf, text="↺ Mặc định", font=FONT_SM,
+                  bg=ENTRY_BG, fg=FG2, relief='flat', cursor='hand2',
+                  padx=6, pady=1,
+                  command=lambda: self.var_link_color.set('0000FF')
+                  ).pack(side='left', padx=(8, 0))
+        # Canh bao nam duoi
+        self._color_warn = tk.Label(out_right, text='', font=FONT_SM, bg=BG, fg=ERROR, anchor='w')
+        self._color_warn.pack(anchor='w', pady=(0, 4))
+        def _update_swatch(*_):
+            raw = self.var_link_color.get().strip().lstrip('#')
+            valid = len(raw) == 6 and all(c in '0123456789ABCDEFabcdef' for c in raw)
+            if valid:
+                self._color_entry.configure(bg=ENTRY_BG)
+                self._color_swatch.configure(bg='#' + raw.upper())
+                self._color_warn.configure(text='')
+            else:
+                if raw:
+                    self._color_entry.configure(bg='#4A1A1A')
+                    self._color_warn.configure(text='⚠ Mã màu sai (VD: FF0000)')
+                else:
+                    self._color_entry.configure(bg=ENTRY_BG)
+                    self._color_warn.configure(text='')
+        self.var_link_color.trace_add('write', _update_swatch)
+
+
+        tk.Frame(form_panel, bg="#2E3650", height=1).pack(fill="x", pady=(10, 0))
+
+        # ── Buttons + progress ─────────────────────────────
+        btn_panel = tk.Frame(main, bg=BG)
+        btn_panel.pack(fill="x", padx=20, pady=(8, 4))
 
         self.btn_run = tk.Button(
-            btn_row, text="▶  Chạy — Gắn Link",
+            btn_panel, text="▶  Chạy — Gắn Link",
             font=("Segoe UI", 11, "bold"),
             bg=BTN_BG, fg=BTN_FG, activebackground=ACCENT2,
             activeforeground=BTN_FG, relief="flat", cursor="hand2",
-            padx=22, pady=10, command=self._on_run
+            padx=20, pady=9, command=self._on_run
         )
         self.btn_run.pack(side="left")
 
         self.btn_open = tk.Button(
-            btn_row, text="📂  Mở file kết quả",
+            btn_panel, text="📂  Mở file kết quả",
             font=FONT, bg=ENTRY_BG, fg=FG2,
             activebackground="#333", activeforeground=FG,
             relief="flat", cursor="hand2",
-            padx=14, pady=10, state="disabled",
+            padx=14, pady=9, state="disabled",
             command=self._open_output
         )
         self.btn_open.pack(side="left", padx=(10, 0))
 
-        # Progress bar
-        style = ttk.Style()
-        style.theme_use("default")
-        style.configure("Blue.Horizontal.TProgressbar",
-                         troughcolor=ENTRY_BG, background=ACCENT, thickness=6)
+        self.lbl_status = tk.Label(btn_panel, text=" ", font=FONT_SM, bg=BG, fg=FG2)
+        self.lbl_status.pack(side="left", padx=(16, 0))
+
+        style_ttk = ttk.Style()
+        style_ttk.theme_use("default")
+        style_ttk.configure("Blue.Horizontal.TProgressbar",
+                             troughcolor=ENTRY_BG, background=ACCENT, thickness=5)
         self.progress = ttk.Progressbar(
-            main, style="Blue.Horizontal.TProgressbar",
-            mode="indeterminate"
+            main, style="Blue.Horizontal.TProgressbar", mode="indeterminate"
         )
-        self.progress.pack(fill="x", padx=28, pady=(2, 0))
+        self.progress.pack(fill="x", padx=20, pady=(2, 0))
 
-        # Status
-        self.lbl_status = tk.Label(main, text=" ", font=FONT_SM, bg=BG, fg=FG2)
-        self.lbl_status.pack(anchor="w", padx=28, pady=(2, 0))
-
-        # ── Log ───────────────────────────────────────────
+        # ── LOG PANEL (expand chiếm toàn bộ phần còn lại) ─
         log_bar = tk.Frame(main, bg=BG)
-        log_bar.pack(fill="x", padx=28, pady=(8, 4))
+        log_bar.pack(fill="x", padx=20, pady=(10, 4))
         tk.Label(log_bar, text="📋  Nhật ký", font=FONT_B, bg=BG, fg=FG).pack(side="left")
         tk.Button(log_bar, text="Xóa", font=FONT_SM, bg=ENTRY_BG, fg=FG2,
                   relief="flat", cursor="hand2", padx=8, pady=2,
                   command=self._clear_log).pack(side="right")
 
-        log_wrap = tk.Frame(main, bg=ENTRY_BG)
-        log_wrap.pack(fill="both", expand=True, padx=28, pady=(0, 20))
+        log_wrap = tk.Frame(main, bg=ENTRY_BG, bd=0)
+        log_wrap.pack(fill="both", expand=True, padx=20, pady=(0, 16))
 
         self.log_box = tk.Text(
             log_wrap, bg=ENTRY_BG, fg=FG,
-            font=("Consolas", 9), relief="flat",
+            font=("Consolas", 10), relief="flat",
             wrap="word", state="disabled",
-            insertbackground=FG, padx=10, pady=8
+            insertbackground=FG, padx=12, pady=10
         )
         self.log_box.pack(side="left", fill="both", expand=True)
         sb = ttk.Scrollbar(log_wrap, command=self.log_box.yview)
@@ -576,6 +669,8 @@ class App(tk.Tk):
         self.log_box.tag_configure("ok",   foreground=SUCCESS)
         self.log_box.tag_configure("err",  foreground=ERROR)
         self.log_box.tag_configure("info", foreground=ACCENT2)
+        self.log_box.tag_configure("warn", foreground="#FFB347")
+
 
     # ── helpers ───────────────────────────────────────────
     def _file_row(self, parent, row, label, var, cmd):
@@ -676,6 +771,15 @@ class App(tk.Tk):
         if not word_out.parent.exists():
             messagebox.showerror("Lỗi", f"Thư mục lưu không tồn tại:\n{word_out.parent}"); return
 
+        # Kiểm tra mã màu
+        raw_color = self.var_link_color.get().strip().lstrip('#')
+        if not (len(raw_color) == 6 and all(c in '0123456789ABCDEFabcdef' for c in raw_color)):
+            messagebox.showerror("Mã màu sai",
+                f"Mã màu '{raw_color}' không hợp lệ!\n"
+                "Phải là 6 ký tự hex (0-9, A-F).\nVí dụ: FF0000, 0000FF, 0070C0")
+            self._color_entry.focus_set()
+            return
+
         self.btn_run.configure(state="disabled", text="⏳  Đang xử lý...")
         self.btn_open.configure(state="disabled")
         self.progress.start(12)
@@ -697,7 +801,9 @@ class App(tk.Tk):
         threading.Thread(
             target=run_core,
             args=(word_in, excel_in, word_out, self._log,
-                  lambda ok: self.after(0, done, ok)),
+                  lambda ok: self.after(0, done, ok),
+                  self.var_link_style.get(),
+                  self.var_link_color.get().strip().lstrip('#')),
             daemon=True
         ).start()
 

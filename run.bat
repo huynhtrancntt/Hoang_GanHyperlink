@@ -1,35 +1,31 @@
 @echo off
+chcp 65001 > nul
 setlocal
 set "DIR=%~dp0"
 set "VENV=%DIR%venv"
 set "PY=%VENV%\Scripts\pythonw.exe"
 set "PIP=%VENV%\Scripts\pip.exe"
 
-:: ── Tao moi truong ao neu chua co ──────────────────────────
 if not exist "%VENV%\Scripts\python.exe" (
-    echo [1/3] Chua co moi truong ao. Dang tao...
+    echo [1/3] Tao moi truong ao...
     python -m venv "%VENV%"
     if errorlevel 1 (
-        echo LOI: Khong the tao venv. Kiem tra Python da duoc cai chua.
+        echo LOI: Khong the tao venv.
         pause
         exit /b 1
     )
-    echo      Tao xong.
 )
 
-:: ── Cai thu vien neu chua co ────────────────────────────────
 if not exist "%VENV%\Lib\site-packages\docx" (
-    echo [2/3] Chua co thu vien. Dang cai: python-docx openpyxl...
+    echo [2/3] Cai thu vien python-docx openpyxl...
     "%PIP%" install --quiet python-docx openpyxl
     if errorlevel 1 (
-        echo LOI: Cai thu vien that bai. Kiem tra ket noi mang.
+        echo LOI: Cai thu vien that bai.
         pause
         exit /b 1
     )
-    echo      Cai xong.
 )
 
-:: ── Chay app.py ─────────────────────────────────────────────
-echo [3/3] Dang chay app...
+echo [3/3] Chay app...
 start "" "%PY%" "%DIR%app.py"
 endlocal
