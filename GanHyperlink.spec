@@ -43,5 +43,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='icon.ico',        # ← icon đã thêm
+    icon='icon.ico',
+    uac_admin=True,       # Yeu cau quyen Administrator (UAC prompt)
 )
