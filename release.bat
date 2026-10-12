@@ -10,17 +10,15 @@ setlocal enabledelayedexpansion
 
 set VERSION=%~1
 
-:: ── Kiểm tra tham số ────────────────────────────────────────
+:: ── Nếu chưa có tham số → hỏi trực tiếp ────────────────────
 if "%VERSION%"=="" (
     echo.
-    echo  [LOI] Chua nhap so phien ban!
+    echo  =====================================================
+    echo    GanHyperlink ^| Cong cu phat hanh tu dong
+    echo  =====================================================
     echo.
-    echo  Cach dung:
-    echo      release.bat v1.0.1
-    echo      release.bat v2.0.0
+    set /p VERSION= Nhap phien ban (vi du v1.0.2): 
     echo.
-    pause
-    exit /b 1
 )
 
 :: ── Kiểm tra định dạng vX.Y.Z ───────────────────────────────
