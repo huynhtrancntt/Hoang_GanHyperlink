@@ -5,7 +5,7 @@ if "!VERSION!"=="" (
     echo.
     echo  GanHyperlink - Auto Release
     echo.
-    set /p "VERSION= Nhap phien ban (vi du: 1.0.2): "
+    set /p "VERSION= Nhap phien ban (vi du: 1.0.4): "
     echo.
 )
 if "!VERSION:~0,1!" neq "v" set "VERSION=v!VERSION!"
@@ -13,11 +13,15 @@ echo [INFO] Phien ban: !VERSION!
 echo.
 git tag --list "!VERSION!" | findstr "!VERSION!" >nul
 if not errorlevel 1 (
-    echo [INFO] Tag !VERSION! ton tai local - tu dong xoa...
+    echo [INFO] Xoa tag local cu: !VERSION!
     git tag -d "!VERSION!" >nul 2>&1
-    echo [OK] Da xoa tag local cu.
-    echo.
 )
+git ls-remote --tags origin "!VERSION!" | findstr "!VERSION!" >nul
+if not errorlevel 1 (
+    echo [INFO] Xoa tag remote cu: !VERSION!
+    git push origin :refs/tags/!VERSION! >nul 2>&1
+)
+echo.
 echo [1/4] Kiem tra thay doi...
 git status --short
 echo.
