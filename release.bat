@@ -1,103 +1,110 @@
 @echo off
 setlocal enabledelayedexpansion
 
-:: ============================================================
-::  release.bat — Tạo GitHub Release tự động
-::  Cách dùng:
-::      release.bat v1.0.1
-::      release.bat v2.0.0
-:: ============================================================
+:: release.bat - GanHyperlink Auto Release
+:: Usage:
+::   release.bat
+::   release.bat 1.0.2
+::   release.bat v1.0.2
 
-set VERSION=%~1
+set "VERSION=%~1"
 
-:: ── Nếu chưa có tham số → hỏi trực tiếp ────────────────────
-if "%VERSION%"=="" (
+:: ── Hoi version neu chua co ──────────────────────────────────
+if "!VERSION!"=="" (
     echo.
-    echo  =====================================================
-    echo    GanHyperlink ^| Cong cu phat hanh tu dong
-    echo  =====================================================
+    echo  ====================================================
+    echo    GanHyperlink  ^|  Auto Release to GitHub
+    echo  ====================================================
     echo.
-    set /p VERSION= Nhap phien ban (vi du v1.0.2): 
+    set /p "VERSION= Nhap phien ban (vi du: 1.0.2): "
     echo.
 )
 
-:: ── Kiểm tra định dạng vX.Y.Z ───────────────────────────────
-echo %VERSION% | findstr /r "^v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$" >nul
+:: ── Tu dong them "v" neu thieu ───────────────────────────────
+echo !VERSION! | findstr /r "^[0-9]" >nul
+if not errorlevel 1 (
+    set "VERSION=v!VERSION!"
+)
+
+:: ── Kiem tra dinh dang vX.Y.Z ────────────────────────────────
+echo !VERSION! | findstr /r "^v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$" >nul
 if errorlevel 1 (
     echo.
-    echo  [LOI] Dinh dang version sai: %VERSION%
-    echo  Phai la dang: v1.0.0 / v1.2.3 / v2.0.0
+    echo  [LOI] Dinh dang sai: !VERSION!
+    echo        Phai la dang: 1.0.0 hoac v1.0.0
     echo.
     pause
     exit /b 1
 )
 
 echo.
-echo  =====================================================
-echo    GanHyperlink — Release %VERSION%
-echo  =====================================================
+echo  [INFO] Phien ban: !VERSION!
 echo.
 
-:: ── Kiểm tra tag chưa tồn tại ───────────────────────────────
-git tag | findstr /x "%VERSION%" >nul
+:: ── Kiem tra tag chua ton tai ────────────────────────────────
+git tag --list "!VERSION!" | findstr "!VERSION!" >nul
 if not errorlevel 1 (
-    echo  [LOI] Tag %VERSION% da ton tai!
-    echo  Dung phien ban khac, vi du: release.bat v1.0.2
+    echo  [LOI] Tag !VERSION! da ton tai local!
+    echo        Chay: git tag -d !VERSION!
     echo.
     pause
     exit /b 1
 )
 
-:: ── Git status ───────────────────────────────────────────────
+:: ── [1/4] Git status ─────────────────────────────────────────
 echo  [1/4] Kiem tra thay doi...
 git status --short
 echo.
 
-:: ── Add & Commit nếu có thay đổi ────────────────────────────
-git diff --quiet --cached
-git diff --quiet
-if errorlevel 1 (
-    echo  [2/4] Co thay doi - tu dong commit...
+:: ── [2/4] Commit neu co thay doi ─────────────────────────────
+echo  [2/4] Commit thay doi...
+git diff --quiet 2>nul
+git diff --cached --quiet 2>nul
+git status --porcelain > "%TEMP%\gs_tmp.txt"
+for %%A in ("%TEMP%\gs_tmp.txt") do set sz=%%~zA
+if !sz! gtr 0 (
     git add -A
-    git commit -m "chore: release %VERSION%"
+    git commit -m "chore: release !VERSION!"
+    echo  [OK] Da commit.
 ) else (
-    echo  [2/4] Khong co thay doi moi.
+    echo  [OK] Khong co thay doi moi.
 )
 echo.
 
-:: ── Push main ───────────────────────────────────────────────
-echo  [3/4] Push len GitHub...
+:: ── [3/4] Push main ──────────────────────────────────────────
+echo  [3/4] Push len GitHub (main)...
 git push origin main
 if errorlevel 1 (
-    echo  [LOI] Push that bai!
+    echo  [LOI] Push main that bai!
     pause
     exit /b 1
 )
+echo  [OK] Push main thanh cong.
 echo.
 
-:: ── Tạo tag & push tag → trigger GitHub Actions ─────────────
-echo  [4/4] Tao tag %VERSION% va push...
-git tag %VERSION% -m "Release %VERSION%"
-git push origin %VERSION%
+:: ── [4/4] Tag, push, xoa local ───────────────────────────────
+echo  [4/4] Tao tag !VERSION! va push...
+git tag "!VERSION!" -m "Release !VERSION!"
+git push origin "!VERSION!"
 if errorlevel 1 (
     echo  [LOI] Push tag that bai!
+    git tag -d "!VERSION!" 2>nul
     pause
     exit /b 1
 )
-
-:: ── Xóa tag dưới local (chỉ giữ trên remote) ────────────────
-git tag -d %VERSION%
-echo  [OK] Da xoa tag %VERSION% khoi local.
-
+git tag -d "!VERSION!" >nul 2>&1
+echo  [OK] Tag !VERSION! da push va xoa khoi local.
 echo.
-echo  =====================================================
+
+:: ── Hoan thanh ───────────────────────────────────────────────
+echo  ====================================================
 echo   XONG! GitHub Actions dang build EXE...
 echo.
-echo   Theo doi tai:
+echo   Theo doi build:
 echo   https://github.com/huynhtrancntt/Hoang_GanHyperlink/actions
 echo.
-echo   File ZIP se xuat hien tai:
-echo   https://github.com/huynhtrancntt/Hoang_GanHyperlink/releases/tag/%VERSION%
-echo  =====================================================
+echo   Release se co tai:
+echo   https://github.com/huynhtrancntt/Hoang_GanHyperlink/releases/tag/!VERSION!
+echo  ====================================================
 echo.
 pause
