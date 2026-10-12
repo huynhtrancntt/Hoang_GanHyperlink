@@ -13,8 +13,10 @@ echo [INFO] Phien ban: !VERSION!
 echo.
 git tag --list "!VERSION!" | findstr "!VERSION!" >nul
 if not errorlevel 1 (
-    echo [LOI] Tag !VERSION! da ton tai local!
-    pause & exit /b 1
+    echo [INFO] Tag !VERSION! ton tai local - tu dong xoa...
+    git tag -d "!VERSION!" >nul 2>&1
+    echo [OK] Da xoa tag local cu.
+    echo.
 )
 echo [1/4] Kiem tra thay doi...
 git status --short
