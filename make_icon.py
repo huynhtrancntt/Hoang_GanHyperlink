@@ -1,21 +1,24 @@
-r"""
-make_icon.py
-============
-Tạo file icon.ico (multi-size) từ ảnh nguồn icon_src.jpg.
-Dùng cách viết ICO thủ công để tương thích Pillow 12.x+.
+# -*- coding: utf-8 -*-
+"""
+make_icon.py  - Build icon.ico (multi-size) from icon_src.jpg
+Compatible with Pillow 12.x+ and Windows cp1252 CI environments.
 
-Chạy:
-    venv\Scripts\python make_icon.py
-    (hoặc: python make_icon.py)
+Usage:
+    venv\\Scripts\\python make_icon.py
+    python make_icon.py
 
-Yêu cầu: pip install Pillow
+Requires: pip install Pillow
 """
 import io
 import struct
 import sys
 from pathlib import Path
 
-# ── Cài Pillow nếu chưa có ──────────────────────────────────────────────────
+# Force UTF-8 output so emoji/unicode don't crash on Windows CI (cp1252)
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+# ── Install Pillow if missing ────────────────────────────────────────────────
 try:
     from PIL import Image, ImageDraw, ImageFont
 except ImportError:
@@ -23,17 +26,17 @@ except ImportError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "Pillow"])
     from PIL import Image, ImageDraw, ImageFont
 
-# ── Đường dẫn ───────────────────────────────────────────────────────────────
+# ── Paths ────────────────────────────────────────────────────────────────────
 HERE    = Path(__file__).parent
 JPG_SRC = HERE / "icon_src.jpg"
 ICO_DST = HERE / "icon.ico"
 
-# ── Load hoặc tạo ảnh nguồn ─────────────────────────────────────────────────
+# ── Load or create source image ──────────────────────────────────────────────
 if JPG_SRC.exists():
-    print(f"📂 Dùng ảnh nguồn: {JPG_SRC.name}")
+    print(f"[INFO] Source image: {JPG_SRC.name}")
     src = Image.open(JPG_SRC).convert("RGBA")
 else:
-    print(f"⚠  Không tìm thấy {JPG_SRC.name} – tạo icon placeholder.")
+    print(f"[WARN] {JPG_SRC.name} not found - generating placeholder icon.")
     src = Image.new("RGBA", (512, 512), color=(13, 27, 42, 255))
     draw = ImageDraw.Draw(src)
     try:
@@ -42,7 +45,7 @@ else:
         font = ImageFont.load_default()
     draw.text((80, 120), "GH", fill=(255, 190, 40, 255), font=font)
 
-# ── Resize thành 7 kích cỡ chuẩn Windows ───────────────────────────────────
+# ── Resize to 7 standard Windows icon sizes ──────────────────────────────────
 SIZES = [16, 24, 32, 48, 64, 128, 256]
 
 png_bufs = []
@@ -51,24 +54,24 @@ for s in SIZES:
     src.resize((s, s), Image.LANCZOS).save(buf, format="PNG")
     png_bufs.append(buf.getvalue())
 
-# ── Viết file ICO thủ công (chuẩn Windows ICO binary format) ────────────────
-# Tương thích Pillow 12.x (tránh bug multi-frame ICO)
+# ── Write ICO binary manually (Windows ICO format) ───────────────────────────
+# Avoids Pillow 12.x multi-frame ICO bug
 n = len(png_bufs)
-ico_header = struct.pack("<HHH", 0, 1, n)   # reserved=0, type=1(ICO), count=n
+ico_header = struct.pack("<HHH", 0, 1, n)  # reserved=0, type=1(ICO), count=n
 
-offset = 6 + n * 16   # header 6 bytes + mỗi entry 16 bytes
+offset = 6 + n * 16  # 6-byte header + 16 bytes per directory entry
 dir_entries = b""
 for s, data in zip(SIZES, png_bufs):
-    w = s if s < 256 else 0          # 256 → 0 theo chuẩn ICO
+    w = s if s < 256 else 0   # 256 -> 0 per ICO spec
     h = s if s < 256 else 0
     dir_entries += struct.pack(
         "<BBBBHHII",
-        w, h,          # width, height
-        0, 0,          # color count, reserved
-        1,             # planes
-        32,            # bit count
-        len(data),     # size of image data
-        offset,        # offset to image data
+        w, h,        # width, height
+        0, 0,        # color count, reserved
+        1,           # planes
+        32,          # bit count
+        len(data),   # image data size
+        offset,      # offset to image data
     )
     offset += len(data)
 
@@ -78,5 +81,5 @@ with open(ICO_DST, "wb") as f:
         f.write(data)
 
 sz = ICO_DST.stat().st_size
-print(f"✅ Icon saved → {ICO_DST}  ({sz:,} bytes | {sz // 1024} KB)")
-print(f"   Gồm {n} kích cỡ: {SIZES}")
+print(f"[OK] icon.ico saved -> {ICO_DST.name}  ({sz:,} bytes | {sz // 1024} KB)")
+print(f"     Sizes: {SIZES}")
