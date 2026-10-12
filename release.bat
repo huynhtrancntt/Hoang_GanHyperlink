@@ -87,6 +87,10 @@ if errorlevel 1 (
     exit /b 1
 )
 
+:: ── Xóa tag dưới local (chỉ giữ trên remote) ────────────────
+git tag -d %VERSION%
+echo  [OK] Da xoa tag %VERSION% khoi local.
+
 echo.
 echo  =====================================================
 echo   XONG! GitHub Actions dang build EXE...
